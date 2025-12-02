@@ -1,0 +1,17 @@
+# Quant Lab Dependencies
+
+# Core data processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# IBKR API
+ib_insync>=0.9.86
+
+# Crypto exchanges via CCXT
+ccxt>=4.0.0
+
+# Dashboard
+streamlit>=1.28.0
+
+# Utilities
+python-dateutil>=2.8.0

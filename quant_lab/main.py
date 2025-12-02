@@ -4,19 +4,25 @@ Quant Lab - Main Entry Point
 
 A quantitative trading framework supporting:
 - Live data from IBKR and crypto exchanges
-- Multiple trading strategies including ETF-Futures spread
+- Multiple trading strategies: ETF-Futures spread, Crypto Funding Harvest, Vol Mean Reversion
 - Paper and live execution
 - Real-time dashboard
 
 Usage:
-    python main.py                     # Run all strategies in paper mode
-    python main.py --mode live         # Run in live mode
-    python main.py --dashboard         # Launch main dashboard
-    python main.py --dashboard spread  # Launch spread strategy dashboard
-    python main.py --strategy etf      # Run only ETF dislocation strategy
-    python main.py --strategy spread   # Run only spread strategy
-    python main.py --spread-only       # Run spread strategy standalone
-    python main.py --once              # Run once and exit
+    python main.py                      # Run all strategies in paper mode
+    python main.py --mode live          # Run in live mode
+    python main.py --dashboard          # Launch main dashboard
+    python main.py --dashboard spread   # Launch spread strategy dashboard
+    python main.py --dashboard funding  # Launch funding harvest dashboard
+    python main.py --dashboard vol      # Launch vol mean reversion dashboard
+    python main.py --strategy etf       # Run only ETF dislocation strategy
+    python main.py --strategy spread    # Run only spread strategy
+    python main.py --strategy funding   # Run only funding harvest strategy
+    python main.py --strategy vol       # Run only vol mean reversion strategy
+    python main.py --spread-only        # Run spread strategy standalone
+    python main.py --funding-only       # Run funding harvest strategy standalone
+    python main.py --vol-only           # Run vol mean reversion strategy standalone
+    python main.py --once               # Run once and exit
 """
 
 import argparse
@@ -32,6 +38,8 @@ from config import (
     EXECUTION_MODE,
     STRATEGY_CONFIG,
     ETF_FUTURES_SPREAD_CONFIG,
+    CRYPTO_FUNDING_HARVEST_CONFIG,
+    VOL_MEAN_REVERSION_CONFIG,
     LOG_CONFIG,
     validate_config,
 )
@@ -47,6 +55,12 @@ from strategies import (
     ETFFuturesSpreadStrategy,
     StrategyConfig as SpreadStrategyConfig,
     SpreadPairConfig,
+    # Crypto Funding Harvest Strategy
+    FundingHarvestRunner,
+    FundingHarvestConfig,
+    # Vol Mean Reversion Strategy
+    VolMeanReversionRunner,
+    VolMeanReversionConfig,
 )
 from strategies.spread_runner import SpreadStrategyRunner
 
@@ -80,6 +94,12 @@ class QuantLab:
 
         # ETF-Futures Spread Strategy Runner
         self.spread_runner: Optional[SpreadStrategyRunner] = None
+
+        # Crypto Funding Harvest Strategy Runner
+        self.funding_runner: Optional[FundingHarvestRunner] = None
+
+        # Vol Mean Reversion Strategy Runner
+        self.vol_runner: Optional[VolMeanReversionRunner] = None
 
         # State
         self.last_run_times: Dict[str, datetime] = {}
@@ -141,6 +161,14 @@ class QuantLab:
         if ETF_FUTURES_SPREAD_CONFIG.get("enabled", True):
             self._initialize_spread_strategy()
 
+        # Initialize Crypto Funding Harvest Strategy
+        if CRYPTO_FUNDING_HARVEST_CONFIG.get("enabled", True):
+            self._initialize_funding_strategy()
+
+        # Initialize Vol Mean Reversion Strategy
+        if VOL_MEAN_REVERSION_CONFIG.get("enabled", True):
+            self._initialize_vol_strategy()
+
     def _initialize_spread_strategy(self):
         """Initialize the ETF-Futures spread strategy runner."""
         try:
@@ -194,6 +222,83 @@ class QuantLab:
         """Callback for spread strategy signals."""
         logger.info(f"Spread signal: {signal.signal} {signal.symbol_etf}/{signal.symbol_hedge} "
                    f"(z={signal.z_score:.2f})")
+
+    def _initialize_funding_strategy(self):
+        """Initialize the Crypto Funding Harvest strategy runner."""
+        try:
+            # Build config from CRYPTO_FUNDING_HARVEST_CONFIG
+            funding_config = FundingHarvestConfig(
+                entry_threshold_pct=CRYPTO_FUNDING_HARVEST_CONFIG.get("entry_threshold_pct", 0.10),
+                exit_threshold_pct=CRYPTO_FUNDING_HARVEST_CONFIG.get("exit_threshold_pct", 0.05),
+                inverse_entry_threshold_pct=CRYPTO_FUNDING_HARVEST_CONFIG.get("inverse_entry_threshold_pct", -0.10),
+                notional_usd=CRYPTO_FUNDING_HARVEST_CONFIG.get("notional_usd", 5000.0),
+                max_positions=CRYPTO_FUNDING_HARVEST_CONFIG.get("max_positions", 2),
+                update_interval_minutes=CRYPTO_FUNDING_HARVEST_CONFIG.get("update_interval_minutes", 15),
+                max_holding_hours=CRYPTO_FUNDING_HARVEST_CONFIG.get("max_holding_hours", 72),
+                max_basis_pct=CRYPTO_FUNDING_HARVEST_CONFIG.get("max_basis_pct", 1.0),
+                min_annualized_rate_pct=CRYPTO_FUNDING_HARVEST_CONFIG.get("min_annualized_rate_pct", 20.0),
+                assets=CRYPTO_FUNDING_HARVEST_CONFIG.get("assets", ["BTC", "ETH"]),
+            )
+
+            # Create runner
+            self.funding_runner = FundingHarvestRunner(
+                crypto_client=self.crypto_client,
+                execution_router=self.execution_router,
+                config=funding_config,
+                on_signal_callback=self._on_funding_signal,
+            )
+
+            if self.funding_runner.initialize():
+                logger.info(f"Crypto Funding Harvest strategy initialized for {funding_config.assets}")
+            else:
+                logger.warning("Crypto Funding Harvest strategy initialization failed")
+
+        except Exception as e:
+            logger.error(f"Error initializing funding strategy: {e}")
+
+    def _on_funding_signal(self, signal):
+        """Callback for funding harvest strategy signals."""
+        logger.info(f"Funding signal: {signal.signal} {signal.asset} "
+                   f"(funding={signal.current_funding:.4f}%, reason={signal.reason})")
+
+    def _initialize_vol_strategy(self):
+        """Initialize the Vol Mean Reversion strategy runner."""
+        try:
+            # Build config from VOL_MEAN_REVERSION_CONFIG
+            vol_config = VolMeanReversionConfig(
+                vix_spike_threshold_pct=VOL_MEAN_REVERSION_CONFIG.get("vix_spike_threshold_pct", 15.0),
+                vix_crash_threshold_pct=VOL_MEAN_REVERSION_CONFIG.get("vix_crash_threshold_pct", -10.0),
+                vix_extreme_spike_pct=VOL_MEAN_REVERSION_CONFIG.get("vix_extreme_spike_pct", 30.0),
+                lookback_days=VOL_MEAN_REVERSION_CONFIG.get("lookback_days", 20),
+                mean_reversion_z=VOL_MEAN_REVERSION_CONFIG.get("mean_reversion_z", 1.5),
+                notional_usd=VOL_MEAN_REVERSION_CONFIG.get("notional_usd", 3000.0),
+                max_position_pct=VOL_MEAN_REVERSION_CONFIG.get("max_position_pct", 0.02),
+                max_holding_days=VOL_MEAN_REVERSION_CONFIG.get("max_holding_days", 3),
+                stop_loss_pct=VOL_MEAN_REVERSION_CONFIG.get("stop_loss_pct", 15.0),
+                preferred_short_vol=VOL_MEAN_REVERSION_CONFIG.get("preferred_short_vol", "SVXY"),
+                preferred_long_vol=VOL_MEAN_REVERSION_CONFIG.get("preferred_long_vol", "UVXY"),
+            )
+
+            # Create runner
+            self.vol_runner = VolMeanReversionRunner(
+                ibkr_client=self.ibkr_client,
+                execution_router=self.execution_router,
+                config=vol_config,
+                on_signal_callback=self._on_vol_signal,
+            )
+
+            if self.vol_runner.initialize():
+                logger.info("Vol Mean Reversion strategy initialized")
+            else:
+                logger.warning("Vol Mean Reversion strategy initialization failed")
+
+        except Exception as e:
+            logger.error(f"Error initializing vol strategy: {e}")
+
+    def _on_vol_signal(self, signal):
+        """Callback for vol mean reversion strategy signals."""
+        logger.info(f"Vol signal: {signal.signal} {signal.instrument} "
+                   f"(VIX change={signal.vix_change_pct:+.1f}%, reason={signal.reason})")
 
     def fetch_market_data(self) -> Dict[str, Dict[str, Any]]:
         """Fetch market data from all sources."""
@@ -367,6 +472,16 @@ class QuantLab:
             self.spread_runner.start()
             logger.info("ETF-Futures Spread strategy runner started")
 
+        # Start funding harvest runner in background
+        if self.funding_runner:
+            self.funding_runner.start()
+            logger.info("Crypto Funding Harvest strategy runner started")
+
+        # Start vol mean reversion runner in background
+        if self.vol_runner:
+            self.vol_runner.start()
+            logger.info("Vol Mean Reversion strategy runner started")
+
         # Set up signal handlers
         signal.signal(signal.SIGINT, self._handle_shutdown)
         signal.signal(signal.SIGTERM, self._handle_shutdown)
@@ -398,6 +513,14 @@ class QuantLab:
         # Stop spread strategy runner
         if self.spread_runner:
             self.spread_runner.shutdown()
+
+        # Stop funding harvest runner
+        if self.funding_runner:
+            self.funding_runner.shutdown()
+
+        # Stop vol mean reversion runner
+        if self.vol_runner:
+            self.vol_runner.shutdown()
 
         # Disconnect data sources
         if self.ibkr_client:
@@ -434,6 +557,10 @@ def run_dashboard(dashboard_type: str = "main"):
 
     if dashboard_type == "spread":
         dashboard_path = os.path.join(os.path.dirname(__file__), "dashboard", "spread_panel.py")
+    elif dashboard_type == "funding":
+        dashboard_path = os.path.join(os.path.dirname(__file__), "dashboard", "funding_panel.py")
+    elif dashboard_type == "vol":
+        dashboard_path = os.path.join(os.path.dirname(__file__), "dashboard", "vol_panel.py")
     else:
         dashboard_path = os.path.join(os.path.dirname(__file__), "dashboard", "app.py")
 
@@ -451,10 +578,10 @@ def main():
     )
     parser.add_argument(
         "--dashboard",
-        choices=["main", "spread"],
+        choices=["main", "spread", "funding", "vol"],
         nargs="?",
         const="main",
-        help="Launch dashboard (main or spread)",
+        help="Launch dashboard (main, spread, funding, or vol)",
     )
     parser.add_argument(
         "--strategy",
@@ -471,6 +598,16 @@ def main():
         "--spread-only",
         action="store_true",
         help="Run only the ETF-Futures spread strategy",
+    )
+    parser.add_argument(
+        "--funding-only",
+        action="store_true",
+        help="Run only the Crypto Funding Harvest strategy",
+    )
+    parser.add_argument(
+        "--vol-only",
+        action="store_true",
+        help="Run only the Vol Mean Reversion strategy",
     )
 
     args = parser.parse_args()
@@ -508,6 +645,38 @@ def main():
             logger.error("Spread strategy not initialized")
         return
 
+    # Run only funding harvest strategy if requested
+    if args.funding_only:
+        if lab.funding_runner:
+            logger.info("Running Crypto Funding Harvest strategy only...")
+            lab.funding_runner.start()
+            try:
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                pass
+            finally:
+                lab.funding_runner.shutdown()
+        else:
+            logger.error("Funding harvest strategy not initialized")
+        return
+
+    # Run only vol mean reversion strategy if requested
+    if args.vol_only:
+        if lab.vol_runner:
+            logger.info("Running Vol Mean Reversion strategy only...")
+            lab.vol_runner.start()
+            try:
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                pass
+            finally:
+                lab.vol_runner.shutdown()
+        else:
+            logger.error("Vol mean reversion strategy not initialized")
+        return
+
     # Disable strategies based on args
     if args.strategy != "all":
         strategy_map = {
@@ -524,12 +693,26 @@ def main():
         if args.strategy != "spread" and lab.spread_runner:
             lab.spread_runner = None
 
+        # Disable funding runner if not selected
+        if args.strategy != "funding" and lab.funding_runner:
+            lab.funding_runner = None
+
+        # Disable vol runner if not selected
+        if args.strategy != "vol" and lab.vol_runner:
+            lab.vol_runner = None
+
     # Run
     if args.once:
         lab.run_once()
         # Also run spread strategy once if enabled
         if lab.spread_runner:
             lab.spread_runner.run_once()
+        # Also run funding strategy once if enabled
+        if lab.funding_runner:
+            lab.funding_runner.run_once()
+        # Also run vol strategy once if enabled
+        if lab.vol_runner:
+            lab.vol_runner.run_once()
         lab.shutdown()
     else:
         lab.run()

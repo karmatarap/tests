@@ -3,9 +3,17 @@ Paper Executor
 
 Simulates order execution for paper trading.
 Records hypothetical trades and tracks PnL without sending real orders.
+
+Supports logging trades to:
+- In-memory list
+- CSV file
+- SQLite database
 """
 
 import logging
+import csv
+import sqlite3
+from pathlib import Path
 from typing import Optional, Dict, List, Callable
 from datetime import datetime
 from dataclasses import dataclass, field
@@ -51,16 +59,27 @@ class PaperExecutor(BaseExecutor):
 
     Simulates order execution without sending real orders.
     Tracks positions, fills, and PnL for backtesting/paper trading.
+
+    Supports logging trades to:
+    - In-memory list (always active)
+    - CSV file (optional)
+    - SQLite database (optional)
     """
 
     def __init__(self, initial_capital: float = 100000.0,
-                 price_provider: Optional[Callable[[str], float]] = None):
+                 price_provider: Optional[Callable[[str], float]] = None,
+                 csv_log_path: Optional[str] = None,
+                 sqlite_log_path: Optional[str] = None,
+                 log_dir: Optional[str] = None):
         """
         Initialize paper executor.
 
         Args:
             initial_capital: Starting capital for paper trading
             price_provider: Optional function to get current price for a symbol
+            csv_log_path: Path for CSV trade log (or auto-generate if log_dir set)
+            sqlite_log_path: Path for SQLite trade log (or auto-generate if log_dir set)
+            log_dir: Directory for auto-generated log files
         """
         super().__init__("Paper")
         self.initial_capital = initial_capital
@@ -69,6 +88,318 @@ class PaperExecutor(BaseExecutor):
         self._price_provider = price_provider
         self._trade_log: List[dict] = []
         self._connected = True  # Always connected
+
+        # Set up logging paths
+        self._log_dir = Path(log_dir) if log_dir else None
+        self._csv_log_path = csv_log_path
+        self._sqlite_log_path = sqlite_log_path
+
+        # Auto-generate log paths if log_dir is specified
+        if self._log_dir:
+            self._log_dir.mkdir(parents=True, exist_ok=True)
+            date_str = datetime.now().strftime("%Y%m%d")
+            if not self._csv_log_path:
+                self._csv_log_path = str(self._log_dir / f"trades_{date_str}.csv")
+            if not self._sqlite_log_path:
+                self._sqlite_log_path = str(self._log_dir / "trades.db")
+
+        # Initialize CSV log
+        if self._csv_log_path:
+            self._init_csv_log()
+
+        # Initialize SQLite log
+        if self._sqlite_log_path:
+            self._init_sqlite_log()
+
+    def _init_csv_log(self):
+        """Initialize CSV trade log file."""
+        try:
+            csv_path = Path(self._csv_log_path)
+            csv_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Write header if file doesn't exist
+            if not csv_path.exists():
+                with open(csv_path, "w", newline="") as f:
+                    writer = csv.writer(f)
+                    writer.writerow([
+                        "timestamp", "order_id", "symbol", "side", "quantity",
+                        "price", "value", "commission", "strategy_id",
+                        "cash_after", "portfolio_value"
+                    ])
+                logger.info(f"CSV trade log initialized: {self._csv_log_path}")
+        except Exception as e:
+            logger.error(f"Failed to initialize CSV log: {e}")
+            self._csv_log_path = None
+
+    def _init_sqlite_log(self):
+        """Initialize SQLite trade log database."""
+        try:
+            db_path = Path(self._sqlite_log_path)
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+
+            conn = sqlite3.connect(self._sqlite_log_path)
+            cursor = conn.cursor()
+
+            # Create trades table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS trades (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    order_id TEXT NOT NULL,
+                    symbol TEXT NOT NULL,
+                    side TEXT NOT NULL,
+                    quantity REAL NOT NULL,
+                    price REAL NOT NULL,
+                    value REAL NOT NULL,
+                    commission REAL NOT NULL,
+                    strategy_id TEXT,
+                    cash_after REAL,
+                    portfolio_value REAL,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # Create positions snapshot table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS position_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    symbol TEXT NOT NULL,
+                    quantity REAL NOT NULL,
+                    avg_cost REAL NOT NULL,
+                    market_value REAL,
+                    realized_pnl REAL,
+                    unrealized_pnl REAL,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # Create portfolio snapshots table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    cash REAL NOT NULL,
+                    portfolio_value REAL NOT NULL,
+                    total_pnl REAL NOT NULL,
+                    return_pct REAL NOT NULL,
+                    num_positions INTEGER NOT NULL,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # Create indexes
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_trades_timestamp ON trades(timestamp)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_trades_strategy ON trades(strategy_id)")
+
+            conn.commit()
+            conn.close()
+            logger.info(f"SQLite trade log initialized: {self._sqlite_log_path}")
+
+        except Exception as e:
+            logger.error(f"Failed to initialize SQLite log: {e}")
+            self._sqlite_log_path = None
+
+    def _log_to_csv(self, trade_record: dict):
+        """Append trade record to CSV file."""
+        if not self._csv_log_path:
+            return
+
+        try:
+            with open(self._csv_log_path, "a", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    trade_record.get("timestamp"),
+                    trade_record.get("order_id"),
+                    trade_record.get("symbol"),
+                    trade_record.get("side"),
+                    trade_record.get("quantity"),
+                    trade_record.get("price"),
+                    trade_record.get("value"),
+                    trade_record.get("commission"),
+                    trade_record.get("strategy_id"),
+                    trade_record.get("cash_after"),
+                    trade_record.get("portfolio_value"),
+                ])
+        except Exception as e:
+            logger.error(f"Failed to write to CSV log: {e}")
+
+    def _log_to_sqlite(self, trade_record: dict):
+        """Insert trade record into SQLite database."""
+        if not self._sqlite_log_path:
+            return
+
+        try:
+            conn = sqlite3.connect(self._sqlite_log_path)
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                INSERT INTO trades (
+                    timestamp, order_id, symbol, side, quantity,
+                    price, value, commission, strategy_id,
+                    cash_after, portfolio_value
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                trade_record.get("timestamp"),
+                trade_record.get("order_id"),
+                trade_record.get("symbol"),
+                trade_record.get("side"),
+                trade_record.get("quantity"),
+                trade_record.get("price"),
+                trade_record.get("value"),
+                trade_record.get("commission"),
+                trade_record.get("strategy_id"),
+                trade_record.get("cash_after"),
+                trade_record.get("portfolio_value"),
+            ))
+
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.error(f"Failed to write to SQLite log: {e}")
+
+    def save_position_snapshot(self):
+        """Save current position snapshot to SQLite."""
+        if not self._sqlite_log_path:
+            return
+
+        try:
+            conn = sqlite3.connect(self._sqlite_log_path)
+            cursor = conn.cursor()
+            timestamp = datetime.now().isoformat()
+
+            for symbol, pos in self._positions.items():
+                current_price = self.get_current_price(symbol) or pos.avg_cost
+                market_value = pos.quantity * current_price
+                unrealized_pnl = 0.0
+                if pos.quantity > 0:
+                    unrealized_pnl = pos.quantity * (current_price - pos.avg_cost)
+                elif pos.quantity < 0:
+                    unrealized_pnl = abs(pos.quantity) * (pos.avg_cost - current_price)
+
+                cursor.execute("""
+                    INSERT INTO position_snapshots (
+                        timestamp, symbol, quantity, avg_cost,
+                        market_value, realized_pnl, unrealized_pnl
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    timestamp, symbol, pos.quantity, pos.avg_cost,
+                    market_value, pos.realized_pnl, unrealized_pnl
+                ))
+
+            conn.commit()
+            conn.close()
+            logger.debug(f"Position snapshot saved at {timestamp}")
+        except Exception as e:
+            logger.error(f"Failed to save position snapshot: {e}")
+
+    def save_portfolio_snapshot(self):
+        """Save current portfolio snapshot to SQLite."""
+        if not self._sqlite_log_path:
+            return
+
+        try:
+            conn = sqlite3.connect(self._sqlite_log_path)
+            cursor = conn.cursor()
+
+            portfolio_value = self.get_portfolio_value()
+            total_pnl = self.get_total_pnl()
+            return_pct = (portfolio_value / self.initial_capital - 1) * 100
+            num_positions = len([p for p in self._positions.values() if p.quantity != 0])
+
+            cursor.execute("""
+                INSERT INTO portfolio_snapshots (
+                    timestamp, cash, portfolio_value, total_pnl,
+                    return_pct, num_positions
+                ) VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                datetime.now().isoformat(),
+                self.cash,
+                portfolio_value,
+                total_pnl,
+                return_pct,
+                num_positions,
+            ))
+
+            conn.commit()
+            conn.close()
+            logger.debug("Portfolio snapshot saved")
+        except Exception as e:
+            logger.error(f"Failed to save portfolio snapshot: {e}")
+
+    def get_trades_from_csv(self, limit: int = 100) -> List[dict]:
+        """Read recent trades from CSV file."""
+        if not self._csv_log_path or not Path(self._csv_log_path).exists():
+            return []
+
+        try:
+            trades = []
+            with open(self._csv_log_path, "r") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    trades.append(row)
+            return trades[-limit:]
+        except Exception as e:
+            logger.error(f"Failed to read CSV log: {e}")
+            return []
+
+    def get_trades_from_sqlite(self, limit: int = 100,
+                                symbol: Optional[str] = None,
+                                strategy_id: Optional[str] = None) -> List[dict]:
+        """Query trades from SQLite database."""
+        if not self._sqlite_log_path:
+            return []
+
+        try:
+            conn = sqlite3.connect(self._sqlite_log_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            query = "SELECT * FROM trades WHERE 1=1"
+            params = []
+
+            if symbol:
+                query += " AND symbol = ?"
+                params.append(symbol)
+            if strategy_id:
+                query += " AND strategy_id = ?"
+                params.append(strategy_id)
+
+            query += " ORDER BY timestamp DESC LIMIT ?"
+            params.append(limit)
+
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            conn.close()
+
+            return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Failed to query SQLite log: {e}")
+            return []
+
+    def get_portfolio_history(self, limit: int = 100) -> List[dict]:
+        """Get portfolio snapshot history from SQLite."""
+        if not self._sqlite_log_path:
+            return []
+
+        try:
+            conn = sqlite3.connect(self._sqlite_log_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT * FROM portfolio_snapshots
+                ORDER BY timestamp DESC LIMIT ?
+            """, (limit,))
+
+            rows = cursor.fetchall()
+            conn.close()
+
+            return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Failed to query portfolio history: {e}")
+            return []
 
     def connect(self) -> bool:
         """Paper executor is always connected."""
@@ -229,7 +560,7 @@ class PaperExecutor(BaseExecutor):
                 pos.avg_cost = total_cost / abs(pos.quantity) if pos.quantity != 0 else 0
 
     def _log_trade(self, order: Order, fill: Fill):
-        """Log trade for history."""
+        """Log trade for history (in-memory, CSV, and SQLite)."""
         trade_record = {
             "timestamp": datetime.now().isoformat(),
             "order_id": order.order_id,
@@ -240,8 +571,18 @@ class PaperExecutor(BaseExecutor):
             "value": fill.value,
             "commission": fill.commission,
             "strategy_id": order.strategy_id,
+            "cash_after": self.cash,
+            "portfolio_value": self.get_portfolio_value(),
         }
+
+        # Log to in-memory list
         self._trade_log.append(trade_record)
+
+        # Log to CSV
+        self._log_to_csv(trade_record)
+
+        # Log to SQLite
+        self._log_to_sqlite(trade_record)
 
     def cancel_order(self, order_id: str) -> bool:
         """

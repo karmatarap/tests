@@ -2,6 +2,12 @@
 Quant Lab Dashboard
 
 Streamlit-based dashboard for monitoring strategies, positions, and performance.
+
+Provides:
+- Global portfolio overview
+- Per-strategy tabs for detailed monitoring
+- Position and PnL tracking
+- Trade history
 """
 
 import streamlit as st
@@ -16,6 +22,11 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import EXECUTION_MODE, DASHBOARD_CONFIG, STRATEGY_CONFIG
+
+# Import strategy dashboard panels
+from dashboard.spread_panel import render_spread_dashboard
+from dashboard.funding_panel import render_funding_dashboard
+from dashboard.vol_panel import render_vol_dashboard
 
 
 # Page configuration
@@ -293,19 +304,8 @@ def render_sidebar():
     return auto_refresh, refresh_interval
 
 
-def main():
-    """Main dashboard entry point."""
-    # Render header
-    render_header()
-
-    # Render sidebar and get controls
-    auto_refresh, refresh_interval = render_sidebar()
-
-    st.divider()
-
-    # Get data (mock for demo)
-    data = get_mock_data()
-
+def render_overview_tab(data: dict):
+    """Render the overview tab with portfolio summary."""
     # Render portfolio summary
     render_portfolio_summary(data)
 
@@ -335,6 +335,52 @@ def main():
 
     with col2:
         render_recent_trades(data)
+
+
+def main():
+    """Main dashboard entry point."""
+    # Render header
+    render_header()
+
+    # Render sidebar and get controls
+    auto_refresh, refresh_interval = render_sidebar()
+
+    st.divider()
+
+    # Create tabs for different views
+    tab_overview, tab_spread, tab_funding, tab_vol = st.tabs([
+        "📊 Overview",
+        "📈 ETF-Futures Spread",
+        "💰 Crypto Funding",
+        "📉 Vol Mean Reversion"
+    ])
+
+    # Get data (mock for demo)
+    data = get_mock_data()
+
+    with tab_overview:
+        render_overview_tab(data)
+
+    with tab_spread:
+        try:
+            render_spread_dashboard()
+        except Exception as e:
+            st.error(f"Error loading spread dashboard: {e}")
+            st.info("Use --dashboard spread for standalone spread dashboard")
+
+    with tab_funding:
+        try:
+            render_funding_dashboard()
+        except Exception as e:
+            st.error(f"Error loading funding dashboard: {e}")
+            st.info("Use --dashboard funding for standalone funding dashboard")
+
+    with tab_vol:
+        try:
+            render_vol_dashboard()
+        except Exception as e:
+            st.error(f"Error loading vol dashboard: {e}")
+            st.info("Use --dashboard vol for standalone vol dashboard")
 
     # Auto-refresh
     if auto_refresh:

@@ -151,6 +151,69 @@ ETF_FUTURES_SPREAD_CONFIG = {
 }
 
 # =============================================================================
+# Crypto Funding Harvest Strategy Configuration
+# =============================================================================
+CRYPTO_FUNDING_HARVEST_CONFIG = {
+    "enabled": True,
+
+    # Funding rate thresholds (per 8h, in percentage)
+    "entry_threshold_pct": float(os.getenv("FUNDING_ENTRY_PCT", "0.10")),  # Open when funding > 0.10%
+    "exit_threshold_pct": float(os.getenv("FUNDING_EXIT_PCT", "0.05")),    # Close when |funding| < 0.05%
+    "inverse_entry_threshold_pct": float(os.getenv("FUNDING_INVERSE_PCT", "-0.10")),
+
+    # Position sizing
+    "notional_usd": float(os.getenv("FUNDING_NOTIONAL", "5000.0")),
+    "max_positions": 2,  # Max concurrent positions (BTC + ETH)
+
+    # Timing
+    "update_interval_minutes": int(os.getenv("FUNDING_INTERVAL", "15")),
+    "max_holding_hours": int(os.getenv("FUNDING_MAX_HOLD", "72")),  # 3 days
+
+    # Risk
+    "max_basis_pct": 1.0,  # Don't enter if basis too wide
+    "min_annualized_rate_pct": 20.0,
+
+    # Assets
+    "assets": ["BTC", "ETH"],
+}
+
+# =============================================================================
+# Vol-of-Vol Mean Reversion Strategy Configuration
+# =============================================================================
+VOL_MEAN_REVERSION_CONFIG = {
+    "enabled": True,
+
+    # VIX spike thresholds
+    "vix_spike_threshold_pct": float(os.getenv("VIX_SPIKE_PCT", "15.0")),  # +15% daily change = spike
+    "vix_crash_threshold_pct": float(os.getenv("VIX_CRASH_PCT", "-10.0")),  # -10% = crash
+    "vix_extreme_spike_pct": float(os.getenv("VIX_EXTREME_PCT", "30.0")),  # +30% = extreme
+
+    # Mean reversion levels
+    "lookback_days": int(os.getenv("VOL_LOOKBACK", "20")),  # 20-day rolling stats
+    "mean_reversion_z": float(os.getenv("VOL_MR_Z", "1.5")),  # Z-score for mean reversion
+
+    # Position sizing
+    "notional_usd": float(os.getenv("VOL_NOTIONAL", "3000.0")),
+    "max_position_pct": 0.02,  # Max 2% of portfolio
+
+    # Timing
+    "max_holding_days": int(os.getenv("VOL_MAX_HOLD", "3")),  # 1-3 days
+    "check_time_before_close_mins": 60,  # Check 60 mins before market close
+
+    # Stop loss
+    "stop_loss_pct": float(os.getenv("VOL_STOP_LOSS", "15.0")),  # 15% adverse move
+
+    # Instruments
+    "instruments": {
+        "UVXY": {"type": "long_vol", "leverage": 1.5},
+        "SVXY": {"type": "short_vol", "leverage": 0.5},
+        "VXX": {"type": "long_vol", "leverage": 1.0},
+    },
+    "preferred_short_vol": "SVXY",  # Preferred instrument for short vol
+    "preferred_long_vol": "UVXY",   # Preferred instrument for long vol
+}
+
+# =============================================================================
 # Logging Configuration
 # =============================================================================
 LOG_CONFIG = {

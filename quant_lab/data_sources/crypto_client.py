@@ -382,6 +382,105 @@ class CryptoClient:
             logger.error(f"Error getting positions from {exchange}: {e}")
             return []
 
+    def get_funding_info_detailed(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """
+        Get detailed funding information including next funding time.
+
+        Args:
+            symbol: Trading pair (e.g., "BTC/USDT")
+
+        Returns:
+            Dictionary with detailed funding info
+        """
+        if not self._binance:
+            logger.error("Binance not initialized")
+            return None
+
+        try:
+            # Get current funding rate
+            funding = self._binance.fetch_funding_rate(symbol)
+
+            # Get ticker for mark price
+            ticker = self._binance.fetch_ticker(symbol)
+
+            # Calculate time to next funding
+            next_funding_ts = funding.get("fundingTimestamp")
+            time_to_funding = None
+            if next_funding_ts:
+                next_funding_dt = datetime.fromtimestamp(next_funding_ts / 1000)
+                time_to_funding = (next_funding_dt - datetime.now()).total_seconds()
+
+            funding_rate = funding.get("fundingRate", 0)
+
+            return {
+                "symbol": symbol,
+                "funding_rate": funding_rate,
+                "funding_rate_pct": funding_rate * 100,
+                "funding_rate_8h_pct": funding_rate * 100,  # Already 8h rate
+                "annualized_rate_pct": funding_rate * 100 * 3 * 365,  # 3 fundings/day * 365
+                "next_funding_time": datetime.fromtimestamp(next_funding_ts / 1000) if next_funding_ts else None,
+                "time_to_funding_seconds": time_to_funding,
+                "mark_price": funding.get("markPrice") or ticker.get("last"),
+                "index_price": funding.get("indexPrice"),
+                "last_price": ticker.get("last"),
+                "timestamp": datetime.now(),
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting detailed funding info for {symbol}: {e}")
+            return None
+
+    def get_spot_and_perp_prices(self, asset: str) -> Optional[Dict[str, Any]]:
+        """
+        Get both spot (Coinbase) and perp (Binance) prices for an asset.
+
+        Args:
+            asset: Asset symbol (e.g., "BTC" or "ETH")
+
+        Returns:
+            Dictionary with spot and perp prices
+        """
+        spot_symbol = f"{asset}/USD"
+        perp_symbol = f"{asset}/USDT"
+
+        try:
+            spot_ticker = self.get_coinbase_ticker(spot_symbol)
+            perp_ticker = self.get_binance_ticker(perp_symbol)
+            funding_info = self.get_funding_info_detailed(perp_symbol)
+
+            if not spot_ticker and not perp_ticker:
+                return None
+
+            spot_price = spot_ticker.get("last") if spot_ticker else None
+            perp_price = perp_ticker.get("last") if perp_ticker else None
+
+            # Calculate basis (perp premium/discount to spot)
+            basis = None
+            basis_pct = None
+            if spot_price and perp_price:
+                basis = perp_price - spot_price
+                basis_pct = (basis / spot_price) * 100
+
+            return {
+                "asset": asset,
+                "spot_symbol": spot_symbol,
+                "perp_symbol": perp_symbol,
+                "spot_price": spot_price,
+                "perp_price": perp_price,
+                "mark_price": funding_info.get("mark_price") if funding_info else None,
+                "basis": basis,
+                "basis_pct": basis_pct,
+                "funding_rate": funding_info.get("funding_rate") if funding_info else None,
+                "funding_rate_pct": funding_info.get("funding_rate_pct") if funding_info else None,
+                "annualized_funding_pct": funding_info.get("annualized_rate_pct") if funding_info else None,
+                "next_funding_time": funding_info.get("next_funding_time") if funding_info else None,
+                "timestamp": datetime.now(),
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting spot and perp prices for {asset}: {e}")
+            return None
+
     def close(self):
         """Close exchange connections."""
         self._coinbase = None

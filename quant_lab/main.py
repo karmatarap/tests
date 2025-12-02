@@ -4,15 +4,19 @@ Quant Lab - Main Entry Point
 
 A quantitative trading framework supporting:
 - Live data from IBKR and crypto exchanges
-- Multiple trading strategies
+- Multiple trading strategies including ETF-Futures spread
 - Paper and live execution
 - Real-time dashboard
 
 Usage:
-    python main.py                  # Run strategies in paper mode
-    python main.py --mode live      # Run in live mode
-    python main.py --dashboard      # Launch dashboard only
-    python main.py --strategy etf   # Run specific strategy
+    python main.py                     # Run all strategies in paper mode
+    python main.py --mode live         # Run in live mode
+    python main.py --dashboard         # Launch main dashboard
+    python main.py --dashboard spread  # Launch spread strategy dashboard
+    python main.py --strategy etf      # Run only ETF dislocation strategy
+    python main.py --strategy spread   # Run only spread strategy
+    python main.py --spread-only       # Run spread strategy standalone
+    python main.py --once              # Run once and exit
 """
 
 import argparse
@@ -27,6 +31,7 @@ from typing import Dict, Any, List, Optional
 from config import (
     EXECUTION_MODE,
     STRATEGY_CONFIG,
+    ETF_FUTURES_SPREAD_CONFIG,
     LOG_CONFIG,
     validate_config,
 )
@@ -38,7 +43,12 @@ from strategies import (
     VolOfVolStrategy,
     Signal,
     SignalType,
+    # ETF-Futures Spread Strategy
+    ETFFuturesSpreadStrategy,
+    StrategyConfig as SpreadStrategyConfig,
+    SpreadPairConfig,
 )
+from strategies.spread_runner import SpreadStrategyRunner
 
 # Configure logging
 logging.basicConfig(
@@ -67,6 +77,9 @@ class QuantLab:
 
         # Strategies
         self.strategies: Dict[str, Any] = {}
+
+        # ETF-Futures Spread Strategy Runner
+        self.spread_runner: Optional[SpreadStrategyRunner] = None
 
         # State
         self.last_run_times: Dict[str, datetime] = {}
@@ -123,6 +136,64 @@ class QuantLab:
                 STRATEGY_CONFIG.get("vol_of_vol")
             )
             logger.info("Vol of Vol strategy initialized")
+
+        # Initialize ETF-Futures Spread Strategy
+        if ETF_FUTURES_SPREAD_CONFIG.get("enabled", True):
+            self._initialize_spread_strategy()
+
+    def _initialize_spread_strategy(self):
+        """Initialize the ETF-Futures spread strategy runner."""
+        try:
+            # Build strategy config from ETF_FUTURES_SPREAD_CONFIG
+            strategy_config = SpreadStrategyConfig(
+                z_entry=ETF_FUTURES_SPREAD_CONFIG.get("z_entry", 2.0),
+                z_exit=ETF_FUTURES_SPREAD_CONFIG.get("z_exit", 0.5),
+                lookback_minutes=ETF_FUTURES_SPREAD_CONFIG.get("lookback_minutes", 60),
+                notional_per_leg_usd=ETF_FUTURES_SPREAD_CONFIG.get("notional_per_leg_usd", 5000.0),
+                update_interval_seconds=ETF_FUTURES_SPREAD_CONFIG.get("update_interval_seconds", 60),
+                max_daily_trades=ETF_FUTURES_SPREAD_CONFIG.get("max_daily_trades", 20),
+                stop_loss_z=ETF_FUTURES_SPREAD_CONFIG.get("stop_loss_z", 4.0),
+                max_holding_minutes=ETF_FUTURES_SPREAD_CONFIG.get("max_holding_minutes", 240),
+            )
+
+            # Build pairs config
+            pairs = {}
+            for pair_id, pair_cfg in ETF_FUTURES_SPREAD_CONFIG.get("pairs", {}).items():
+                if pair_cfg.get("enabled", False):
+                    pairs[pair_id] = SpreadPairConfig(
+                        etf_symbol=pair_cfg["etf_symbol"],
+                        futures_symbol=pair_cfg["futures_symbol"],
+                        futures_exchange=pair_cfg.get("futures_exchange", "CME"),
+                        futures_multiplier=pair_cfg.get("futures_multiplier", 50.0),
+                        scaling_factor=pair_cfg.get("scaling_factor", 0.1),
+                        etf_shares_per_future=pair_cfg.get("etf_shares_per_future", 500),
+                    )
+
+            if not pairs:
+                logger.warning("No spread pairs enabled")
+                return
+
+            # Create runner
+            self.spread_runner = SpreadStrategyRunner(
+                ibkr_client=self.ibkr_client,
+                execution_router=self.execution_router,
+                strategy_config=strategy_config,
+                pairs=pairs,
+                on_signal_callback=self._on_spread_signal,
+            )
+
+            if self.spread_runner.initialize():
+                logger.info(f"ETF-Futures Spread strategy initialized with {len(pairs)} pairs")
+            else:
+                logger.warning("ETF-Futures Spread strategy initialization failed")
+
+        except Exception as e:
+            logger.error(f"Error initializing spread strategy: {e}")
+
+    def _on_spread_signal(self, signal):
+        """Callback for spread strategy signals."""
+        logger.info(f"Spread signal: {signal.signal} {signal.symbol_etf}/{signal.symbol_hedge} "
+                   f"(z={signal.z_score:.2f})")
 
     def fetch_market_data(self) -> Dict[str, Dict[str, Any]]:
         """Fetch market data from all sources."""
@@ -291,6 +362,11 @@ class QuantLab:
         self.running = True
         logger.info("Starting Quant Lab trading loop...")
 
+        # Start spread strategy runner in background
+        if self.spread_runner:
+            self.spread_runner.start()
+            logger.info("ETF-Futures Spread strategy runner started")
+
         # Set up signal handlers
         signal.signal(signal.SIGINT, self._handle_shutdown)
         signal.signal(signal.SIGTERM, self._handle_shutdown)
@@ -318,6 +394,10 @@ class QuantLab:
     def shutdown(self):
         """Shutdown all components."""
         logger.info("Shutting down Quant Lab...")
+
+        # Stop spread strategy runner
+        if self.spread_runner:
+            self.spread_runner.shutdown()
 
         # Disconnect data sources
         if self.ibkr_client:
@@ -347,12 +427,16 @@ class QuantLab:
         }
 
 
-def run_dashboard():
+def run_dashboard(dashboard_type: str = "main"):
     """Launch the Streamlit dashboard."""
     import subprocess
     import os
 
-    dashboard_path = os.path.join(os.path.dirname(__file__), "dashboard", "app.py")
+    if dashboard_type == "spread":
+        dashboard_path = os.path.join(os.path.dirname(__file__), "dashboard", "spread_panel.py")
+    else:
+        dashboard_path = os.path.join(os.path.dirname(__file__), "dashboard", "app.py")
+
     subprocess.run(["streamlit", "run", dashboard_path])
 
 
@@ -367,19 +451,26 @@ def main():
     )
     parser.add_argument(
         "--dashboard",
-        action="store_true",
-        help="Launch dashboard only",
+        choices=["main", "spread"],
+        nargs="?",
+        const="main",
+        help="Launch dashboard (main or spread)",
     )
     parser.add_argument(
         "--strategy",
-        choices=["etf", "funding", "vol", "all"],
+        choices=["etf", "funding", "vol", "spread", "all"],
         default="all",
-        help="Strategy to run",
+        help="Strategy to run (etf, funding, vol, spread, or all)",
     )
     parser.add_argument(
         "--once",
         action="store_true",
         help="Run once and exit",
+    )
+    parser.add_argument(
+        "--spread-only",
+        action="store_true",
+        help="Run only the ETF-Futures spread strategy",
     )
 
     args = parser.parse_args()
@@ -391,7 +482,7 @@ def main():
 
     # Launch dashboard
     if args.dashboard:
-        run_dashboard()
+        run_dashboard(args.dashboard)
         return
 
     # Initialize and run
@@ -400,6 +491,22 @@ def main():
     if not lab.initialize():
         logger.error("Failed to initialize Quant Lab")
         sys.exit(1)
+
+    # Run only spread strategy if requested
+    if args.spread_only:
+        if lab.spread_runner:
+            logger.info("Running ETF-Futures Spread strategy only...")
+            lab.spread_runner.start()
+            try:
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                pass
+            finally:
+                lab.spread_runner.shutdown()
+        else:
+            logger.error("Spread strategy not initialized")
+        return
 
     # Disable strategies based on args
     if args.strategy != "all":
@@ -413,9 +520,16 @@ def main():
             if name != active_strategy:
                 strategy.disable()
 
+        # Disable spread runner if not selected
+        if args.strategy != "spread" and lab.spread_runner:
+            lab.spread_runner = None
+
     # Run
     if args.once:
         lab.run_once()
+        # Also run spread strategy once if enabled
+        if lab.spread_runner:
+            lab.spread_runner.run_once()
         lab.shutdown()
     else:
         lab.run()

@@ -94,6 +94,63 @@ STRATEGY_CONFIG = {
 }
 
 # =============================================================================
+# ETF-Futures Spread Strategy Configuration
+# =============================================================================
+ETF_FUTURES_SPREAD_CONFIG = {
+    "enabled": True,
+
+    # Z-score thresholds for entry/exit
+    "z_entry": float(os.getenv("SPREAD_Z_ENTRY", "2.0")),  # Enter when |z| > z_entry
+    "z_exit": float(os.getenv("SPREAD_Z_EXIT", "0.5")),    # Exit when |z| < z_exit
+    "stop_loss_z": float(os.getenv("SPREAD_STOP_LOSS_Z", "4.0")),  # Emergency stop
+
+    # Lookback for z-score calculation
+    "lookback_minutes": int(os.getenv("SPREAD_LOOKBACK", "60")),
+
+    # Position sizing
+    "notional_per_leg_usd": float(os.getenv("SPREAD_NOTIONAL", "5000.0")),
+    "max_position_pct": 0.01,  # Max 1% of portfolio per position
+
+    # Execution
+    "update_interval_seconds": int(os.getenv("SPREAD_UPDATE_INTERVAL", "60")),
+
+    # Risk limits
+    "max_daily_trades": 20,
+    "max_holding_minutes": 240,  # 4 hours max holding
+
+    # Active pairs
+    "pairs": {
+        "SPY_ES": {
+            "enabled": True,
+            "etf_symbol": "SPY",
+            "futures_symbol": "ES",
+            "futures_exchange": "CME",
+            "futures_multiplier": 50.0,
+            "scaling_factor": 0.1,  # SPY ~= ES / 10
+            "etf_shares_per_future": 500,
+        },
+        "QQQ_NQ": {
+            "enabled": True,
+            "etf_symbol": "QQQ",
+            "futures_symbol": "NQ",
+            "futures_exchange": "CME",
+            "futures_multiplier": 20.0,
+            "scaling_factor": 0.025,  # QQQ ~= NQ / 40
+            "etf_shares_per_future": 400,
+        },
+        "IWM_RTY": {
+            "enabled": False,  # Disabled by default
+            "etf_symbol": "IWM",
+            "futures_symbol": "RTY",
+            "futures_exchange": "CME",
+            "futures_multiplier": 50.0,
+            "scaling_factor": 0.5,
+            "etf_shares_per_future": 500,
+        },
+    },
+}
+
+# =============================================================================
 # Logging Configuration
 # =============================================================================
 LOG_CONFIG = {

@@ -95,6 +95,107 @@ class IBKRClient:
         """
         return Option(symbol, expiry, strike, right, exchange, currency=currency)
 
+    def create_future_contract(self, symbol: str, exchange: str = "CME",
+                               currency: str = "USD",
+                               expiry: str = "") -> Future:
+        """
+        Create a futures contract.
+
+        Args:
+            symbol: Futures symbol (e.g., "ES", "NQ", "RTY")
+            exchange: Exchange (default CME for E-mini futures)
+            currency: Currency (default USD)
+            expiry: Optional expiry (YYYYMM format). If empty, uses front month.
+
+        Returns:
+            Future contract object
+        """
+        if expiry:
+            return Future(symbol, expiry, exchange, currency=currency)
+        else:
+            # Create continuous/front-month contract
+            return Future(symbol, exchange=exchange, currency=currency)
+
+    def create_index_contract(self, symbol: str, exchange: str = "CBOE",
+                              currency: str = "USD") -> Contract:
+        """
+        Create an index contract.
+
+        Args:
+            symbol: Index symbol (e.g., "SPX", "NDX", "VIX")
+            exchange: Exchange (default CBOE)
+            currency: Currency (default USD)
+
+        Returns:
+            Index contract object
+        """
+        contract = Contract()
+        contract.symbol = symbol
+        contract.secType = "IND"
+        contract.exchange = exchange
+        contract.currency = currency
+        return contract
+
+    def get_front_month_future(self, symbol: str, exchange: str = "CME") -> Optional[Future]:
+        """
+        Get the front-month futures contract for a symbol.
+
+        Args:
+            symbol: Futures symbol (e.g., "ES", "NQ")
+            exchange: Exchange
+
+        Returns:
+            Front-month Future contract
+        """
+        if not self.is_connected:
+            logger.error("Not connected to IBKR")
+            return None
+
+        try:
+            # Create a generic future and let IBKR resolve to front month
+            future = Future(symbol, exchange=exchange)
+            qualified = self.ib.qualifyContracts(future)
+            if qualified:
+                return qualified[0]
+            return None
+        except Exception as e:
+            logger.error(f"Error getting front month future for {symbol}: {e}")
+            return None
+
+    def get_contract_details(self, contract: Contract) -> Optional[Dict[str, Any]]:
+        """
+        Get detailed contract information.
+
+        Args:
+            contract: IBKR contract object
+
+        Returns:
+            Dictionary with contract details
+        """
+        if not self.is_connected:
+            logger.error("Not connected to IBKR")
+            return None
+
+        try:
+            details = self.ib.reqContractDetails(contract)
+            if details:
+                d = details[0]
+                return {
+                    "symbol": d.contract.symbol,
+                    "sec_type": d.contract.secType,
+                    "exchange": d.contract.exchange,
+                    "currency": d.contract.currency,
+                    "local_symbol": d.contract.localSymbol,
+                    "multiplier": float(d.contract.multiplier) if d.contract.multiplier else 1,
+                    "min_tick": d.minTick,
+                    "trading_hours": d.tradingHours,
+                    "liquid_hours": d.liquidHours,
+                }
+            return None
+        except Exception as e:
+            logger.error(f"Error getting contract details: {e}")
+            return None
+
     def get_quote(self, contract: Contract) -> Optional[Dict[str, Any]]:
         """
         Get current quote for a contract.

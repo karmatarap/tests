@@ -1,0 +1,38 @@
+# Python dependencies for CDISC Pilot Pipeline
+# Core workflow engine
+snakemake>=8.0
+
+# Anthropic SDK for AI-assisted document parsing
+anthropic>=0.25
+
+# Data processing
+pandas>=2.0
+pyarrow>=14.0
+numpy>=1.24
+
+# Configuration and validation
+pyyaml>=6.0
+jsonschema>=4.0
+pydantic>=2.0
+
+# Template rendering
+jinja2>=3.0
+
+# XPT file handling
+pyreadstat>=1.2
+
+# Report generation
+tabulate>=0.9
+rich>=13.0
+
+# Testing
+pytest>=7.0
+pytest-cov>=4.0
+
+# PDF parsing (for future document understanding)
+pypdf>=3.0
+pdf2image>=1.16
+pytesseract>=0.3
+
+# Logging and monitoring
+loguru>=0.7

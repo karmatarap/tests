@@ -1,0 +1,205 @@
+"""
+CDISC Pilot Pipeline - Main Snakefile
+======================================
+
+Automated clinical reporting pipeline for CDISCPILOT01
+Transforms: SDTM → ADaM → TLFs → Validation Reports
+
+Usage:
+    snakemake --cores 4                    # Run full pipeline
+    snakemake adam_only --cores 4          # Generate ADaM datasets only
+    snakemake tlf_only --cores 4           # Generate TLFs only
+    snakemake benchmark --cores 4          # Run QC comparisons
+    snakemake clean                        # Clean generated files
+    snakemake --dag | dot -Tpng > dag.png  # Visualize pipeline DAG
+"""
+
+import os
+import json
+from datetime import datetime
+from pathlib import Path
+
+# Load configuration
+configfile: "config/config.yaml"
+
+# Extract lists from config
+SDTM_DOMAINS = config["sdtm_domains"]
+ADAM_DATASETS = config["adam_datasets"]
+TLFS = [t["id"] for t in config["tlfs"]]
+
+# Working directories
+WORKDIR = Path(workflow.basedir)
+DATA_DIR = WORKDIR / "data"
+SDTM_DIR = DATA_DIR / "sdtm"
+ADAM_DIR = DATA_DIR / "adam"
+TLF_DIR = DATA_DIR / "tlf"
+LOG_DIR = WORKDIR / "logs"
+REPORT_DIR = WORKDIR / "reports"
+GROUND_TRUTH_DIR = WORKDIR / "tests" / "ground_truth"
+BENCHMARK_DIR = WORKDIR / "tests" / "benchmarks"
+
+# Include modular rule files
+include: "rules/00_document_parsing.smk"
+include: "rules/01_sdtm.smk"
+include: "rules/02_adam.smk"
+include: "rules/03_tlf.smk"
+include: "rules/04_qc.smk"
+
+
+# =============================================================================
+# TARGET RULES
+# =============================================================================
+
+rule all:
+    """Default target: run the complete pipeline"""
+    input:
+        # ADaM datasets
+        expand("data/adam/{dataset}.xpt", dataset=ADAM_DATASETS),
+        # TLFs
+        expand("data/tlf/{tlf}.rtf", tlf=TLFS),
+        # QC report
+        "reports/qc/validation_summary.html"
+    message:
+        "CDISC Pilot Pipeline completed successfully!"
+
+
+rule sdtm_only:
+    """Target: Validate SDTM only (data already exists)"""
+    input:
+        expand("data/sdtm/{domain}.xpt", domain=SDTM_DOMAINS)
+    message:
+        "SDTM validation completed"
+
+
+rule adam_only:
+    """Target: Generate ADaM datasets only"""
+    input:
+        expand("data/adam/{dataset}.xpt", dataset=ADAM_DATASETS)
+    message:
+        "ADaM generation completed"
+
+
+rule tlf_only:
+    """Target: Generate TLFs only (requires ADaM)"""
+    input:
+        expand("data/tlf/{tlf}.rtf", tlf=TLFS)
+    message:
+        "TLF generation completed"
+
+
+rule qc_only:
+    """Target: Run QC comparisons only"""
+    input:
+        "reports/qc/validation_summary.html"
+    message:
+        "QC validation completed"
+
+
+rule benchmark:
+    """Target: Run benchmark comparisons against ground truth"""
+    input:
+        expand("tests/benchmarks/{dataset}_comparison.html",
+               dataset=["adsl", "adae", "advs", "adqsadas", "adtte"])
+    message:
+        "Benchmark comparison completed"
+
+
+rule dag:
+    """Generate pipeline DAG visualization"""
+    output:
+        "reports/pipeline_dag.png"
+    shell:
+        """
+        snakemake --dag | dot -Tpng > {output}
+        echo "Pipeline DAG saved to {output}"
+        """
+
+
+# =============================================================================
+# CLEANUP RULES
+# =============================================================================
+
+rule clean:
+    """Remove all generated files"""
+    shell:
+        """
+        rm -rf data/adam/*.xpt
+        rm -rf data/tlf/*.rtf
+        rm -rf tests/benchmarks/*.html
+        rm -rf reports/qc/*.html
+        rm -rf reports/exceptions/*.json
+        rm -rf logs/*/*.log
+        echo "Cleanup completed"
+        """
+
+
+rule clean_adam:
+    """Remove ADaM datasets only"""
+    shell:
+        """
+        rm -rf data/adam/*.xpt
+        echo "ADaM datasets removed"
+        """
+
+
+rule clean_tlf:
+    """Remove TLF outputs only"""
+    shell:
+        """
+        rm -rf data/tlf/*.rtf
+        echo "TLF outputs removed"
+        """
+
+
+# =============================================================================
+# EVENT HANDLERS
+# =============================================================================
+
+onerror:
+    """Handle pipeline failures"""
+    import json
+    from datetime import datetime
+
+    error_report = {
+        "timestamp": datetime.now().isoformat(),
+        "rule": "unknown",
+        "log": str(log) if 'log' in dir() else "No log available",
+        "status": "FAILED"
+    }
+
+    exception_dir = Path("reports/exceptions")
+    exception_dir.mkdir(parents=True, exist_ok=True)
+
+    exception_file = exception_dir / f"error_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+
+    with open(exception_file, 'w') as f:
+        json.dump(error_report, f, indent=2)
+
+    print(f"\n{'='*60}")
+    print("PIPELINE FAILED")
+    print(f"Error report saved to: {exception_file}")
+    print(f"{'='*60}\n")
+
+
+onsuccess:
+    """Handle pipeline success"""
+    from datetime import datetime
+
+    print(f"\n{'='*60}")
+    print("PIPELINE COMPLETED SUCCESSFULLY")
+    print(f"Timestamp: {datetime.now().isoformat()}")
+    print(f"{'='*60}\n")
+
+    # Generate summary
+    summary = {
+        "timestamp": datetime.now().isoformat(),
+        "status": "SUCCESS",
+        "adam_datasets": ADAM_DATASETS,
+        "tlfs": TLFS
+    }
+
+    summary_file = Path("reports/pipeline_summary.json")
+    summary_file.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(summary_file, 'w') as f:
+        json.dump(summary, f, indent=2)

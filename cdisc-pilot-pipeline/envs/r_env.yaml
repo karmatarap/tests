@@ -1,0 +1,28 @@
+# Conda environment for R-based clinical data processing
+name: cdisc_r
+channels:
+  - conda-forge
+  - r
+dependencies:
+  - r-base>=4.3
+  - r-tidyverse
+  - r-haven
+  - r-lubridate
+  - r-dplyr
+  - r-tidyr
+  - r-stringr
+  - r-purrr
+  - r-readr
+  - r-rlang
+  - r-glue
+  - r-cli
+  - r-yaml
+  - r-jsonlite
+  - r-rmarkdown
+  - r-knitr
+  - r-testthat
+  - r-devtools
+  - r-remotes
+  # Note: pharmaverse packages (admiral, xportr, Tplyr, pharmaRTF, diffdf)
+  # should be installed via R after conda env creation:
+  # install.packages(c("admiral", "xportr", "pharmaRTF", "Tplyr", "diffdf"))

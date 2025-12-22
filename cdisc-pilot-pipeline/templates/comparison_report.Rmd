@@ -1,0 +1,59 @@
+---
+title: "Dataset Comparison Report"
+output: html_document
+params:
+  dataset_name: "Unknown"
+  comparison: NULL
+  generated_path: ""
+  expected_path: ""
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+library(knitr)
+library(DT)
+```
+
+# `r params$dataset_name` Comparison Report
+
+**Generated:** `r Sys.time()`
+
+## Summary
+
+```{r summary}
+if (!is.null(params$comparison)) {
+  n_issues <- length(params$comparison)
+  if (n_issues == 0) {
+    cat("✅ **PASS** - No differences found between generated and expected datasets.")
+  } else {
+    cat(paste("⚠️ **DIFFERENCES FOUND** -", n_issues, "issues detected."))
+  }
+} else {
+  cat("❌ No comparison data available.")
+}
+```
+
+## Files Compared
+
+- **Generated:** `r params$generated_path`
+- **Expected:** `r params$expected_path`
+
+## Comparison Details
+
+```{r details}
+if (!is.null(params$comparison) && length(params$comparison) > 0) {
+  print(params$comparison)
+} else {
+  cat("No differences to display.")
+}
+```
+
+## Recommendations
+
+```{r recommendations}
+if (!is.null(params$comparison) && length(params$comparison) > 0) {
+  cat("Review the differences above and update derivation logic as needed.")
+} else {
+  cat("Dataset matches ground truth. Ready for production use.")
+}
+```

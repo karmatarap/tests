@@ -1,0 +1,194 @@
+# CDISC Pilot Study Configuration
+# Study: CDISCPILOT01 - Alzheimer's Disease Study
+
+study_id: "CDISCPILOT01"
+study_name: "Safety and Efficacy of the Xanomeline Transdermal Therapeutic System (TTS) in Patients with Mild to Moderate Alzheimer's Disease"
+
+# Treatment Arms
+treatment_arms:
+  - code: "Pbo"
+    name: "Placebo"
+    armcd: "Pbo"
+    dose: null
+    arm_n: 0
+  - code: "Xan_Lo"
+    name: "Xanomeline Low Dose"
+    armcd: "Xan_Lo"
+    dose: "54 mg/day"
+    arm_n: 54
+  - code: "Xan_Hi"
+    name: "Xanomeline High Dose"
+    armcd: "Xan_Hi"
+    dose: "81 mg/day"
+    arm_n: 81
+
+# SDTM Domains to process
+sdtm_domains:
+  - dm    # Demographics
+  - ae    # Adverse Events
+  - vs    # Vital Signs
+  - lb    # Laboratory
+  - ex    # Exposure
+  - qs    # Questionnaires
+  - mh    # Medical History
+  - cm    # Concomitant Medications
+  - ds    # Disposition
+  - sv    # Subject Visits
+  - sc    # Subject Characteristics
+  - se    # Subject Elements
+
+# ADaM Datasets to generate
+adam_datasets:
+  - adsl      # Subject Level
+  - adae      # Adverse Events
+  - advs      # Vital Signs
+  - adlbc     # Lab Chemistry
+  - adlbh     # Lab Hematology
+  - adqsadas  # ADAS-Cog Efficacy
+  - adtte     # Time to Event
+
+# Tables, Listings, Figures
+tlfs:
+  - id: "14-1.01"
+    title: "Summary of Demographic and Baseline Characteristics"
+    type: "table"
+    population: "ITTFL"
+  - id: "14-2.01"
+    title: "Overall Summary of Adverse Events"
+    type: "table"
+    population: "SAFFL"
+  - id: "14-3.01"
+    title: "ADAS-Cog (11) - Change from Baseline to Week 24 - LOCF"
+    type: "table"
+    population: "EFFFL"
+  - id: "14-6.01"
+    title: "Summary of Vital Signs at Baseline and End of Treatment"
+    type: "table"
+    population: "SAFFL"
+
+# Primary Endpoint
+primary_endpoint:
+  name: "ADAS-Cog(11)"
+  paramcd: "ACTOT"
+  description: "Change from baseline to Week 24"
+  method: "ANCOVA with LOCF"
+  covariates:
+    - "BASE"      # Baseline value
+    - "SITEGR1"   # Pooled site group
+  contrasts:
+    - "Xanomeline Low Dose vs Placebo"
+    - "Xanomeline High Dose vs Placebo"
+
+# Visit Schedule
+visits:
+  - visitnum: 1
+    visit: "SCREENING 1"
+    day: -14
+    window_low: -14
+    window_high: -1
+  - visitnum: 2
+    visit: "SCREENING 2"
+    day: -1
+    window_low: -14
+    window_high: -1
+  - visitnum: 3
+    visit: "BASELINE"
+    day: 1
+    window_low: 1
+    window_high: 1
+  - visitnum: 4
+    visit: "WEEK 2"
+    day: 14
+    window_low: 11
+    window_high: 17
+  - visitnum: 5
+    visit: "WEEK 4"
+    day: 28
+    window_low: 25
+    window_high: 35
+  - visitnum: 6
+    visit: "WEEK 6"
+    day: 42
+    window_low: 39
+    window_high: 49
+  - visitnum: 7
+    visit: "WEEK 8"
+    day: 56
+    window_low: 53
+    window_high: 63
+  - visitnum: 8
+    visit: "WEEK 12"
+    day: 84
+    window_low: 77
+    window_high: 91
+  - visitnum: 9
+    visit: "WEEK 16"
+    day: 112
+    window_low: 105
+    window_high: 119
+  - visitnum: 10
+    visit: "WEEK 20"
+    day: 140
+    window_low: 133
+    window_high: 147
+  - visitnum: 11
+    visit: "WEEK 24"
+    day: 168
+    window_low: 161
+    window_high: 175
+  - visitnum: 12
+    visit: "WEEK 26"
+    day: 182
+    window_low: 179
+    window_high: 189
+  - visitnum: 201
+    visit: "AMBUL ECG PLACEMENT"
+    day: null
+  - visitnum: 202
+    visit: "AMBUL ECG REMOVAL"
+    day: null
+  - visitnum: 13
+    visit: "RETRIEVAL"
+    day: null
+
+# Analysis Populations
+populations:
+  - name: "SAFFL"
+    flag: "SAFFL"
+    definition: "Received at least one dose of study treatment"
+    derivation: "TRTSDT is not missing"
+  - name: "ITTFL"
+    flag: "ITTFL"
+    definition: "All randomized subjects"
+    derivation: "RANDFL = 'Y'"
+  - name: "EFFFL"
+    flag: "EFFFL"
+    definition: "ITT population with baseline and at least one post-baseline efficacy assessment"
+    derivation: "ITTFL = 'Y' and has baseline and post-baseline ADAS-Cog"
+
+# Data paths
+paths:
+  raw: "data/raw"
+  sdtm: "data/sdtm"
+  adam: "data/adam"
+  tlf: "data/tlf"
+  specs: "specs"
+  logs: "logs"
+  reports: "reports"
+  ground_truth: "tests/ground_truth"
+
+# QC Settings
+qc:
+  tolerance_numeric: 0.0001
+  tolerance_date: 0
+  key_variables:
+    adsl: ["STUDYID", "USUBJID"]
+    adae: ["STUDYID", "USUBJID", "AESEQ"]
+    advs: ["STUDYID", "USUBJID", "PARAMCD", "AVISITN", "ATPTN"]
+    adlbc: ["STUDYID", "USUBJID", "PARAMCD", "AVISITN"]
+    adqsadas: ["STUDYID", "USUBJID", "PARAMCD", "AVISITN"]
+
+# Logging
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

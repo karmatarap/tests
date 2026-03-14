@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Toddler Fun!</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+
+        body {
+            font-family: 'Comic Sans MS', 'Chalkboard SE', cursive, sans-serif;
+            overflow: hidden;
+            background: #f0f8ff;
+            touch-action: manipulation;
+        }
+
+        /* ===== NAV ===== */
+        .nav {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            padding: 10px;
+            background: linear-gradient(135deg, #ff9a9e, #fad0c4, #fbc2eb);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .nav button {
+            font-size: 1.3rem;
+            padding: 10px 18px;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: bold;
+            color: #fff;
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+        .nav button:active { transform: scale(0.92); }
+        .nav button.active { box-shadow: 0 0 0 4px #fff, 0 4px 15px rgba(0,0,0,0.2); transform: scale(1.05); }
+        .nav button:nth-child(1) { background: #ff6b6b; }
+        .nav button:nth-child(2) { background: #4ecdc4; }
+        .nav button:nth-child(3) { background: #ffe66d; color: #333; }
+        .nav button:nth-child(4) { background: #a78bfa; }
+
+        /* ===== SCREENS ===== */
+        .screen {
+            display: none;
+            width: 100vw;
+            height: calc(100vh - 60px);
+            position: relative;
+        }
+        .screen.active { display: flex; }
+
+        /* ===== ANIMALS ===== */
+        #animals {
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            align-content: center;
+            gap: 20px;
+            padding: 20px;
+            background: linear-gradient(180deg, #e0f7fa, #b2ebf2);
+        }
+        .animal-btn {
+            font-size: 4.5rem;
+            width: 120px;
+            height: 120px;
+            border: none;
+            border-radius: 28px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.15s;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+        }
+        .animal-btn:active { transform: scale(1.25) rotate(5deg); }
+        .animal-btn.pop {
+            animation: popAnim 0.4s ease;
+        }
+        @keyframes popAnim {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.35) rotate(8deg); }
+            100% { transform: scale(1); }
+        }
+        .animal-label {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 2px 2px 8px rgba(0,0,0,0.3);
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+        .animal-label.show { opacity: 1; }
+
+        /* ===== BUBBLES ===== */
+        #bubbles {
+            background: linear-gradient(180deg, #667eea, #764ba2);
+            justify-content: center;
+            align-items: center;
+        }
+        .bubble {
+            position: absolute;
+            border-radius: 50%;
+            cursor: pointer;
+            opacity: 0.85;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            animation: floatUp 6s linear forwards;
+            box-shadow: inset -8px -8px 20px rgba(255,255,255,0.3), 0 4px 15px rgba(0,0,0,0.15);
+        }
+        .bubble.popped {
+            animation: bubblePop 0.3s ease forwards;
+        }
+        @keyframes floatUp {
+            0% { transform: translateY(0) scale(1); opacity: 0.85; }
+            100% { transform: translateY(-110vh) scale(0.8); opacity: 0; }
+        }
+        @keyframes bubblePop {
+            0% { transform: scale(1); opacity: 0.85; }
+            50% { transform: scale(1.5); opacity: 0.5; }
+            100% { transform: scale(0); opacity: 0; }
+        }
+        .bubble-score {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            font-size: 2rem;
+            color: #fff;
+            font-weight: bold;
+            text-shadow: 2px 2px 6px rgba(0,0,0,0.3);
+        }
+
+        /* ===== COLORS ===== */
+        #colors {
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 30px;
+            background: linear-gradient(180deg, #ffecd2, #fcb69f);
+            padding: 20px;
+        }
+        .color-prompt {
+            font-size: 2.2rem;
+            font-weight: bold;
+            color: #333;
+            text-align: center;
+        }
+        .color-grid {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 20px;
+        }
+        .color-btn {
+            width: 110px;
+            height: 110px;
+            border: 5px solid #fff;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: transform 0.15s;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+        }
+        .color-btn:active { transform: scale(0.9); }
+        .color-btn.correct {
+            animation: correctPulse 0.5s ease;
+        }
+        .color-btn.wrong {
+            animation: wrongShake 0.4s ease;
+        }
+        @keyframes correctPulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.3); box-shadow: 0 0 30px rgba(76,175,80,0.6); }
+            100% { transform: scale(1); }
+        }
+        @keyframes wrongShake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-12px); }
+            75% { transform: translateX(12px); }
+        }
+        .color-stars {
+            font-size: 2rem;
+            min-height: 40px;
+        }
+
+        /* ===== PIANO ===== */
+        #piano {
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            background: linear-gradient(180deg, #1a1a2e, #16213e);
+            padding-bottom: 30px;
+        }
+        .piano-visual {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .piano-emoji {
+            font-size: 5rem;
+            transition: transform 0.2s;
+        }
+        .piano-emoji.bounce {
+            animation: emojiBounce 0.4s ease;
+        }
+        @keyframes emojiBounce {
+            0% { transform: scale(1) translateY(0); }
+            40% { transform: scale(1.3) translateY(-20px); }
+            100% { transform: scale(1) translateY(0); }
+        }
+        .piano-keys {
+            display: flex;
+            gap: 4px;
+            padding: 0 10px;
+            width: 100%;
+            max-width: 600px;
+        }
+        .piano-key {
+            flex: 1;
+            height: 180px;
+            border: none;
+            border-radius: 0 0 14px 14px;
+            cursor: pointer;
+            font-size: 2.5rem;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            padding-bottom: 15px;
+            transition: transform 0.1s;
+            box-shadow: 0 6px 15px rgba(0,0,0,0.3);
+        }
+        .piano-key:active { transform: scaleY(0.95); }
+        .piano-key.pressed {
+            transform: scaleY(0.93);
+            filter: brightness(1.2);
+        }
+
+        /* ===== PARTICLES ===== */
+        .particle {
+            position: fixed;
+            pointer-events: none;
+            font-size: 2rem;
+            animation: particleFly 0.8s ease-out forwards;
+            z-index: 1000;
+        }
+        @keyframes particleFly {
+            0% { opacity: 1; transform: translate(0, 0) scale(1); }
+            100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(0.3); }
+        }
+    </style>
+</head>
+<body>
+
+<nav class="nav">
+    <button onclick="switchScreen('animals')" id="nav-animals" class="active">Animals</button>
+    <button onclick="switchScreen('bubbles')" id="nav-bubbles">Bubbles</button>
+    <button onclick="switchScreen('colors')" id="nav-colors">Colors</button>
+    <button onclick="switchScreen('piano')" id="nav-piano">Piano</button>
+</nav>
+
+<div id="animals" class="screen active">
+    <div class="animal-label" id="animal-label"></div>
+</div>
+
+<div id="bubbles" class="screen">
+    <div class="bubble-score">Score: <span id="bubble-score">0</span></div>
+</div>
+
+<div id="colors" class="screen">
+    <div class="color-prompt" id="color-prompt"></div>
+    <div class="color-grid" id="color-grid"></div>
+    <div class="color-stars" id="color-stars"></div>
+</div>
+
+<div id="piano" class="screen">
+    <div class="piano-visual">
+        <div class="piano-emoji" id="piano-emoji">🎵</div>
+    </div>
+    <div class="piano-keys" id="piano-keys"></div>
+</div>
+
+<script>
+    // ===== AUDIO CONTEXT =====
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    let audioCtx;
+    function ensureAudio() {
+        if (!audioCtx) audioCtx = new AudioCtx();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+    }
+
+    function playTone(freq, duration = 0.3, type = 'sine') {
+        ensureAudio();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+    }
+
+    function playHappySound() {
+        playTone(523, 0.15);
+        setTimeout(() => playTone(659, 0.15), 100);
+        setTimeout(() => playTone(784, 0.25), 200);
+    }
+
+    function playSadSound() {
+        playTone(200, 0.3, 'sawtooth');
+    }
+
+    function playPopSound() {
+        ensureAudio();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.15);
+    }
+
+    // ===== PARTICLES =====
+    function spawnParticles(x, y, emojis = ['⭐', '✨', '🌟']) {
+        for (let i = 0; i < 6; i++) {
+            const p = document.createElement('div');
+            p.className = 'particle';
+            p.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+            const angle = (Math.PI * 2 * i) / 6;
+            const dist = 60 + Math.random() * 40;
+            p.style.left = x + 'px';
+            p.style.top = y + 'px';
+            p.style.setProperty('--dx', Math.cos(angle) * dist + 'px');
+            p.style.setProperty('--dy', Math.sin(angle) * dist + 'px');
+            document.body.appendChild(p);
+            setTimeout(() => p.remove(), 800);
+        }
+    }
+
+    // ===== SCREEN SWITCHING =====
+    let currentScreen = 'animals';
+    let bubbleInterval = null;
+
+    function switchScreen(name) {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+        document.getElementById(name).classList.add('active');
+        document.getElementById('nav-' + name).classList.add('active');
+
+        if (bubbleInterval) { clearInterval(bubbleInterval); bubbleInterval = null; }
+
+        currentScreen = name;
+        if (name === 'bubbles') startBubbles();
+        if (name === 'colors') newColorRound();
+
+        ensureAudio();
+    }
+
+    // ===== 1. ANIMALS =====
+    const animals = [
+        { emoji: '🐶', name: 'Dog', sound: 'Woof!', color: '#ffcdd2', freq: 300 },
+        { emoji: '🐱', name: 'Cat', sound: 'Meow!', color: '#f8bbd0', freq: 500 },
+        { emoji: '🐮', name: 'Cow', sound: 'Moo!', color: '#c8e6c9', freq: 180 },
+        { emoji: '🐷', name: 'Pig', sound: 'Oink!', color: '#f48fb1', freq: 250 },
+        { emoji: '🐸', name: 'Frog', sound: 'Ribbit!', color: '#a5d6a7', freq: 400 },
+        { emoji: '🦁', name: 'Lion', sound: 'Roar!', color: '#ffe0b2', freq: 150 },
+        { emoji: '🐔', name: 'Chicken', sound: 'Cluck!', color: '#fff9c4', freq: 600 },
+        { emoji: '🦆', name: 'Duck', sound: 'Quack!', color: '#b3e5fc', freq: 450 },
+        { emoji: '🐴', name: 'Horse', sound: 'Neigh!', color: '#d7ccc8', freq: 220 },
+    ];
+
+    const animalsEl = document.getElementById('animals');
+    const animalLabel = document.getElementById('animal-label');
+
+    animals.forEach(a => {
+        const btn = document.createElement('button');
+        btn.className = 'animal-btn';
+        btn.style.background = a.color;
+        btn.textContent = a.emoji;
+        btn.addEventListener('click', (e) => {
+            ensureAudio();
+            btn.classList.remove('pop');
+            void btn.offsetWidth;
+            btn.classList.add('pop');
+            animalLabel.textContent = a.sound + ' ' + a.name + '!';
+            animalLabel.classList.add('show');
+            playTone(a.freq, 0.4, 'triangle');
+            setTimeout(() => playTone(a.freq * 1.25, 0.3, 'triangle'), 150);
+            spawnParticles(e.clientX, e.clientY, [a.emoji, '💖', '⭐']);
+            clearTimeout(animalLabel._t);
+            animalLabel._t = setTimeout(() => animalLabel.classList.remove('show'), 1500);
+        });
+        animalsEl.appendChild(btn);
+    });
+
+    // ===== 2. BUBBLES =====
+    let bubbleScore = 0;
+    const bubbleColors = ['#ff6b6b', '#4ecdc4', '#ffe66d', '#a78bfa', '#f472b6', '#34d399', '#60a5fa', '#fb923c'];
+    const bubbleEmojis = ['😊', '🌟', '💜', '🎈', '🦋', '🌈', '🍭', '🎀'];
+
+    function startBubbles() {
+        bubbleScore = 0;
+        document.getElementById('bubble-score').textContent = '0';
+        bubbleInterval = setInterval(spawnBubble, 800);
+        spawnBubble();
+    }
+
+    function spawnBubble() {
+        if (currentScreen !== 'bubbles') return;
+        const container = document.getElementById('bubbles');
+        const bubble = document.createElement('div');
+        bubble.className = 'bubble';
+        const size = 60 + Math.random() * 60;
+        bubble.style.width = size + 'px';
+        bubble.style.height = size + 'px';
+        const color = bubbleColors[Math.floor(Math.random() * bubbleColors.length)];
+        bubble.style.background = `radial-gradient(circle at 35% 35%, ${color}88, ${color})`;
+        bubble.style.left = (10 + Math.random() * 75) + '%';
+        bubble.style.bottom = '-80px';
+        bubble.textContent = bubbleEmojis[Math.floor(Math.random() * bubbleEmojis.length)];
+
+        bubble.addEventListener('click', (e) => {
+            if (bubble.classList.contains('popped')) return;
+            bubble.classList.add('popped');
+            bubbleScore++;
+            document.getElementById('bubble-score').textContent = bubbleScore;
+            playPopSound();
+            spawnParticles(e.clientX, e.clientY, ['💥', '✨', '🌟']);
+            setTimeout(() => bubble.remove(), 300);
+        });
+
+        container.appendChild(bubble);
+        setTimeout(() => bubble.remove(), 6000);
+    }
+
+    // ===== 3. COLORS =====
+    const colorList = [
+        { name: 'Red', hex: '#ef4444' },
+        { name: 'Blue', hex: '#3b82f6' },
+        { name: 'Green', hex: '#22c55e' },
+        { name: 'Yellow', hex: '#eab308' },
+        { name: 'Purple', hex: '#a855f7' },
+        { name: 'Orange', hex: '#f97316' },
+        { name: 'Pink', hex: '#ec4899' },
+        { name: 'Brown', hex: '#92400e' },
+    ];
+    let colorTarget = null;
+    let colorStarCount = 0;
+
+    function newColorRound() {
+        const grid = document.getElementById('color-grid');
+        grid.innerHTML = '';
+        const shuffled = [...colorList].sort(() => Math.random() - 0.5);
+        const choices = shuffled.slice(0, 4);
+        colorTarget = choices[Math.floor(Math.random() * choices.length)];
+        document.getElementById('color-prompt').textContent = `Tap ${colorTarget.name}!`;
+
+        choices.forEach(c => {
+            const btn = document.createElement('button');
+            btn.className = 'color-btn';
+            btn.style.background = c.hex;
+            btn.addEventListener('click', (e) => {
+                ensureAudio();
+                if (c.name === colorTarget.name) {
+                    btn.classList.add('correct');
+                    playHappySound();
+                    colorStarCount++;
+                    document.getElementById('color-stars').textContent = '⭐'.repeat(Math.min(colorStarCount, 20));
+                    spawnParticles(e.clientX, e.clientY, ['🎉', '⭐', '🌈']);
+                    setTimeout(newColorRound, 700);
+                } else {
+                    btn.classList.add('wrong');
+                    playSadSound();
+                    setTimeout(() => btn.classList.remove('wrong'), 400);
+                }
+            });
+            grid.appendChild(btn);
+        });
+    }
+
+    // ===== 4. PIANO =====
+    const pianoNotes = [
+        { note: 'C', freq: 261.63, color: '#ef4444', emoji: '🎸' },
+        { note: 'D', freq: 293.66, color: '#f97316', emoji: '🥁' },
+        { note: 'E', freq: 329.63, color: '#eab308', emoji: '🎺' },
+        { note: 'F', freq: 349.23, color: '#22c55e', emoji: '🎷' },
+        { note: 'G', freq: 392.00, color: '#3b82f6', emoji: '🎻' },
+        { note: 'A', freq: 440.00, color: '#8b5cf6', emoji: '🪗' },
+        { note: 'B', freq: 493.88, color: '#ec4899', emoji: '🎹' },
+    ];
+
+    const pianoKeysEl = document.getElementById('piano-keys');
+    const pianoEmoji = document.getElementById('piano-emoji');
+
+    pianoNotes.forEach(n => {
+        const key = document.createElement('button');
+        key.className = 'piano-key';
+        key.style.background = `linear-gradient(180deg, ${n.color}, ${n.color}cc)`;
+        key.textContent = n.note;
+        key.style.color = '#fff';
+        key.style.fontWeight = 'bold';
+
+        const play = (e) => {
+            ensureAudio();
+            playTone(n.freq, 0.5, 'triangle');
+            key.classList.add('pressed');
+            pianoEmoji.textContent = n.emoji;
+            pianoEmoji.classList.remove('bounce');
+            void pianoEmoji.offsetWidth;
+            pianoEmoji.classList.add('bounce');
+            const rect = key.getBoundingClientRect();
+            spawnParticles(rect.left + rect.width / 2, rect.top, ['🎵', '🎶', '💫']);
+            setTimeout(() => key.classList.remove('pressed'), 200);
+        };
+
+        key.addEventListener('mousedown', play);
+        key.addEventListener('touchstart', (e) => { e.preventDefault(); play(e); });
+        pianoKeysEl.appendChild(key);
+    });
+
+    // ===== INIT =====
+    document.body.addEventListener('click', ensureAudio, { once: true });
+    document.body.addEventListener('touchstart', ensureAudio, { once: true });
+</script>
+
+</body>
+</html>
